@@ -18,7 +18,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
-import com.github.tomakehurst.wiremock.client.MappingBuilder;
 import com.github.tomakehurst.wiremock.matching.UrlPattern;
 
 import io.restassured.http.ContentType;
@@ -35,16 +34,11 @@ public class ApiSecurityUnitTest {
 
         UrlPattern loginUrl = urlPathEqualTo("/auth/login");
 
-        MappingBuilder loginRequest = post(loginUrl).withHeader("Content-Type", containing("application/json"))
-            .withRequestBody(matchingJsonPath("$.username"))
-            .withRequestBody(matchingJsonPath("$.password"));
-
         // Login endpoint
         stubFor(post(loginUrl).withHeader("Content-Type", containing("application/json"))
             .withRequestBody(matchingJsonPath("$.username"))
             .withRequestBody(matchingJsonPath("$.password"))
             .willReturn(aResponse().withStatus(200)
-                .withHeader("Content-Type", "application/json")
                 .withBody("{ \"token\": \"dummy-token\" }")));
 
         // Brute force protection
