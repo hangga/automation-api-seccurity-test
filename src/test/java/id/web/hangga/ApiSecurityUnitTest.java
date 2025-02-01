@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.client.MappingBuilder;
 
 import io.restassured.http.ContentType;
 
@@ -21,6 +22,11 @@ public class ApiSecurityUnitTest {
         wireMockServer = new WireMockServer(8080);
         wireMockServer.start();
         configureFor("localhost", 8080);
+
+        MappingBuilder loginRequest = post(urlPathEqualTo("/auth/login"))
+            .withHeader("Content-Type", containing("application/json"))
+            .withRequestBody(matchingJsonPath("$.username"))
+            .withRequestBody(matchingJsonPath("$.password"));
 
         // Login endpoint
         stubFor(post(urlPathEqualTo("/auth/login"))
