@@ -24,6 +24,12 @@ import io.restassured.http.ContentType;
 
 public class ApiSecurityUnitTest {
 
+    //    @RegisterExtension
+    //    static WireMockExtension wm1 = WireMockExtension.newInstance()
+    //        .build();
+
+    private static final String API_URL = "http://localhost:8080/";
+
     private static WireMockServer wireMockServer;
 
     @BeforeAll
@@ -83,7 +89,7 @@ public class ApiSecurityUnitTest {
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"newuser\", \"password\": \"password123\", \"email\": \"newuser@example.com\" }")
             .when()
-            .post("http://localhost:8080/auth/signup")
+            .post(API_URL + "auth/signup")
             .then()
             .statusCode(201)
             .body("message", equalTo("User created successfully"));
@@ -94,7 +100,7 @@ public class ApiSecurityUnitTest {
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"existinguser\", \"password\": \"password123\", \"email\": \"existing@example.com\" }")
             .when()
-            .post("http://localhost:8080/auth/signup")
+            .post(API_URL + "auth/signup")
             .then()
             .statusCode(409)
             .body("message", equalTo("Username already exists"));
@@ -105,7 +111,7 @@ public class ApiSecurityUnitTest {
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"wronguser\", \"password\": \"wrongpass\" }")
             .when()
-            .post("http://localhost:8080/auth/login")
+            .post(API_URL + "auth/login")
             .then()
             .statusCode(401);
     }
@@ -115,7 +121,7 @@ public class ApiSecurityUnitTest {
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"user\" }")
             .when()
-            .post("http://localhost:8080/auth/login")
+            .post(API_URL + "auth/login")
             .then()
             .statusCode(401);
     }
@@ -125,7 +131,7 @@ public class ApiSecurityUnitTest {
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"admin\", \"password\": \"' OR '1'='1\" }")
             .when()
-            .post("http://localhost:8080/auth/login")
+            .post(API_URL + "auth/login")
             .then()
             .statusCode(401);
     }
@@ -135,7 +141,7 @@ public class ApiSecurityUnitTest {
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"user123\", \"password\": \"pass123\", \"email\": \"invalid-email\" }")
             .when()
-            .post("http://localhost:8080/auth/signup")
+            .post(API_URL + "auth/signup")
             .then()
             .statusCode(400);
     }
@@ -145,7 +151,7 @@ public class ApiSecurityUnitTest {
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"newuser\", \"password\": \"password123\" }")
             .when()
-            .post("http://localhost:8080/auth/signup")
+            .post(API_URL + "auth/signup")
             .then()
             .statusCode(404);
     }
@@ -156,13 +162,13 @@ public class ApiSecurityUnitTest {
             given().contentType(ContentType.JSON)
                 .body("{ \"username\": \"user\", \"password\": \"wrongpass\" }")
                 .when()
-                .post("http://localhost:8080/auth/login");
+                .post(API_URL + "auth/login");
         }
 
         given().contentType(ContentType.JSON)
             .body("{ \"username\": \"user\", \"password\": \"wrongpass\" }")
             .when()
-            .post("http://localhost:8080/auth/login")
+            .post(API_URL + "auth/login")
             .then()
             .statusCode(401);
     }
