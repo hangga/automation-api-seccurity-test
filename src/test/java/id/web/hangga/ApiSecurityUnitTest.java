@@ -80,7 +80,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testSignUpSuccess() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"newuser\", \"password\": \"password123\", \"email\": \"newuser@example.com\" }")
+            .body(createJson("newuser", "password123", "newuser@example.com"))
             .when()
             .post(API_URL + "auth/signup")
             .then()
@@ -91,7 +91,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testSignUpUsernameExists() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"existinguser\", \"password\": \"password123\", \"email\": \"existing@example.com\" }")
+            .body(createJson("existinguser", "password123", "existing@example.com"))
             .when()
             .post(API_URL + "auth/signup")
             .then()
@@ -101,7 +101,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testLoginInvalidCredentials() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"wronguser\", \"password\": \"wrongpass\" }")
+            .body(createJson("wronguser", "wrongpass", null))
             .when()
             .post(API_URL + "auth/login")
             .then()
@@ -111,7 +111,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testLoginMissingFields() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"user\" }")
+            .body(createJson("user", null, null))
             .when()
             .post(API_URL + "auth/login")
             .then()
@@ -121,7 +121,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testLoginSQLInjectionAttempt() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"admin\", \"password\": \"' OR '1'='1\" }")
+            .body(createJson("admin", "' OR '1'='1", null))
             .when()
             .post(API_URL + "auth/login")
             .then()
@@ -131,7 +131,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testSignUpInvalidEmail() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"user123\", \"password\": \"pass123\", \"email\": \"hangga-gmail\" }")
+            .body(createJson("user123", "pass123", "hangga-gmail"))
             .when()
             .post(API_URL + "auth/signup")
             .then()
@@ -141,7 +141,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testSignUpMissingFields() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"newuser\", \"password\": \"\" }")
+            .body(createJson("newuser", "", null))
             .when()
             .post(API_URL + "auth/signup")
             .then()
@@ -152,16 +152,26 @@ public class ApiSecurityUnitTest {
     public void testBruteForceProtection() {
         for (int i = 0; i < 5; i++) {
             given().contentType(ContentType.JSON)
-                .body("{ \"username\": \"user\", \"password\": \"wrongpass\" }")
+                .body(createJson("user", "wrongpass", null))
                 .when()
                 .post(API_URL + "auth/login");
         }
 
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"user\", \"password\": \"wrongpass\" }")
+            .body(createJson("user", "wrongpass", null))
             .when()
             .post(API_URL + "auth/login")
             .then()
             .statusCode(401);
+    }
+
+    private String createJson(String username, String password, String email) {
+        StringBuilder json = new StringBuilder("{");
+        if (username != null) json.append("\"username\": \"").append(username).append("\", ");
+        if (password != null) json.append("\"password\": \"").append(password).append("\", ");
+        if (email != null) json.append("\"email\": \"").append(email).append("\", ");
+        if (json.charAt(json.length() - 2) == ',') json.delete(json.length() - 2, json.length());
+        json.append("}");
+        return json.toString();
     }
 }
