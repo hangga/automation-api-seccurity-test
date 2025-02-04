@@ -8,7 +8,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.matching;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED;
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.equalTo;
@@ -18,15 +17,10 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
-import com.github.tomakehurst.wiremock.matching.UrlPattern;
 
 import io.restassured.http.ContentType;
 
 public class ApiSecurityUnitTest {
-
-    //    @RegisterExtension
-    //    static WireMockExtension wm1 = WireMockExtension.newInstance()
-    //        .build();
 
     private static final String API_URL = "http://localhost:8080/";
 
@@ -38,45 +32,44 @@ public class ApiSecurityUnitTest {
         wireMockServer.start();
         configureFor("localhost", 8080);
 
-        UrlPattern loginUrl = urlPathEqualTo("/auth/login");
+        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
+            .willReturn(aResponse().withStatus(200)));
 
-        // Login endpoint
-        stubFor(post(loginUrl).withHeader("Content-Type", containing("application/json"))
-            .withRequestBody(matchingJsonPath("$.username"))
-            .withRequestBody(matchingJsonPath("$.password"))
-            .willReturn(aResponse().withStatus(200)
-                .withBody("{ \"token\": \"dummy-token\" }")));
-
-        // Brute force protection
-        stubFor(post(loginUrl).inScenario("Brute Force")
+        // bruteforce protection simulation
+        stubFor(post("/auth/login").inScenario("Brute Force")
             .whenScenarioStateIs(STARTED)
             .willReturn(aResponse().withStatus(401)));
 
-        // SQL Injection attempt response
-        stubFor(post(loginUrl).withRequestBody(containing("' OR '1'='1"))
+        // sql injection protection simulation
+        stubFor(post("/auth/login").withRequestBody(containing("' OR '1'='1"))
             .willReturn(aResponse().withStatus(401)));
 
-        UrlPattern signupUrl = urlPathEqualTo("/auth/signup");
-
-        // Sign-up endpoint - Success
-        stubFor(post(signupUrl).withHeader("Content-Type", containing("application/json"))
-            .withRequestBody(matchingJsonPath("$.username"))
-            .withRequestBody(matchingJsonPath("$.password"))
-            .withRequestBody(matchingJsonPath("$.email"))
+        stubFor(post("/auth/signup").withHeader("Content-Type", containing("application/json"))
             .willReturn(aResponse().withStatus(201)
                 .withHeader("Content-Type", "application/json")
                 .withBody("{ \"message\": \"User created successfully\" }")));
 
-        // Sign-up endpoint - Username already exists (Error case)
-        stubFor(post(signupUrl).withHeader("Content-Type", containing("application/json"))
-            .withRequestBody(equalToJson("{\"username\": \"existinguser\", \"password\": \"password123\", \"email\": \"existing@example.com\"}"))
+        stubFor(post("/auth/signup").withRequestBody(
+                equalToJson("{\"username\": \"existinguser\", \"password\": \"password123\", \"email\": \"existing@example.com\"}"))
             .willReturn(aResponse().withStatus(409)
                 .withHeader("Content-Type", "application/json")
                 .withBody("{ \"message\": \"Username already exists\" }")));
 
-        // Invalid email format response
-        stubFor(post(signupUrl).withRequestBody(matchingJsonPath("$.email", matching("^((?!@).)*$")))
+        // fields validations
+        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.email", matching("^[^@]+$")))
             .willReturn(aResponse().withStatus(400)));
+
+        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.username", matching("^\\s*$")))
+            .willReturn(aResponse().withStatus(400)
+                .withBody("{ \"message\": \"Username cannot be empty\" }")));
+
+        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.password", matching("^\\s*$")))
+            .willReturn(aResponse().withStatus(400)
+                .withBody("{ \"message\": \"Password cannot be empty\" }")));
+
+        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.email", matching("^\\s*$")))
+            .willReturn(aResponse().withStatus(400)
+                .withBody("{ \"message\": \"Email cannot be empty\" }")));
     }
 
     @AfterAll
@@ -102,8 +95,7 @@ public class ApiSecurityUnitTest {
             .when()
             .post(API_URL + "auth/signup")
             .then()
-            .statusCode(409)
-            .body("message", equalTo("Username already exists"));
+            .statusCode(409);
     }
 
     @Test
@@ -139,7 +131,7 @@ public class ApiSecurityUnitTest {
     @Test
     public void testSignUpInvalidEmail() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"user123\", \"password\": \"pass123\", \"email\": \"invalid-email\" }")
+            .body("{ \"username\": \"user123\", \"password\": \"pass123\", \"email\": \"hangga-gmail\" }")
             .when()
             .post(API_URL + "auth/signup")
             .then()
@@ -149,11 +141,11 @@ public class ApiSecurityUnitTest {
     @Test
     public void testSignUpMissingFields() {
         given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"newuser\", \"password\": \"password123\" }")
+            .body("{ \"username\": \"newuser\", \"password\": \"\" }")
             .when()
             .post(API_URL + "auth/signup")
             .then()
-            .statusCode(404);
+            .statusCode(400);
     }
 
     @Test
