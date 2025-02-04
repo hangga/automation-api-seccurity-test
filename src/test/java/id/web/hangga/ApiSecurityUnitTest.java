@@ -32,27 +32,35 @@ public class ApiSecurityUnitTest {
         wireMockServer.start();
         configureFor("localhost", 8080);
 
-        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
-            .willReturn(aResponse().withStatus(200)));
+        stubFor(post("/auth/login")
+            .withHeader("Content-Type", containing("application/json"))
+            .willReturn(aResponse().withStatus(200)
+                .withHeader("X-Content-Type-Options", "nosniff")));
 
         // bruteforce protection simulation
-        stubFor(post("/auth/login").inScenario("Brute Force")
+        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
+            .inScenario("Brute Force")
             .whenScenarioStateIs(STARTED)
-            .willReturn(aResponse().withStatus(401)));
+            .willReturn(aResponse().withStatus(401)
+                .withHeader("X-Content-Type-Options", "nosniff")));
 
         // sql injection protection simulation
-        stubFor(post("/auth/login").withRequestBody(containing("' OR '1'='1"))
-            .willReturn(aResponse().withStatus(401)));
+        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
+            .withRequestBody(containing("' OR '1'='1"))
+            .willReturn(aResponse().withStatus(401)
+                .withHeader("X-Content-Type-Options", "nosniff")));
 
         stubFor(post("/auth/signup").withHeader("Content-Type", containing("application/json"))
             .willReturn(aResponse().withStatus(201)
                 .withHeader("Content-Type", "application/json")
+                .withHeader("X-Content-Type-Options", "nosniff")
                 .withBody("{ \"message\": \"User created successfully\" }")));
 
         stubFor(post("/auth/signup").withRequestBody(
                 equalToJson("{\"username\": \"existinguser\", \"password\": \"password123\", \"email\": \"existing@example.com\"}"))
             .willReturn(aResponse().withStatus(409)
                 .withHeader("Content-Type", "application/json")
+                .withHeader("X-Content-Type-Options", "nosniff")
                 .withBody("{ \"message\": \"Username already exists\" }")));
 
         // fields validations
@@ -165,12 +173,45 @@ public class ApiSecurityUnitTest {
             .statusCode(401);
     }
 
+    @Test
+    public void testInvalidHttpMethod() {
+        given().when()
+            .get(API_URL + "auth/login")
+            .then()
+            .statusCode(404);
+    }
+
+    @Test
+    public void testMissingSecurityHeaders() {
+        given().contentType(ContentType.JSON)
+            .body(createJson("user", "password", null))
+            .when()
+            .post(API_URL + "auth/login")
+            .then()
+            .statusCode(401)
+            .header("X-Content-Type-Options", equalTo("nosniff"));
+    }
+
     private String createJson(String username, String password, String email) {
         StringBuilder json = new StringBuilder("{");
-        if (username != null) json.append("\"username\": \"").append(username).append("\", ");
-        if (password != null) json.append("\"password\": \"").append(password).append("\", ");
-        if (email != null) json.append("\"email\": \"").append(email).append("\", ");
-        if (json.charAt(json.length() - 2) == ',') json.delete(json.length() - 2, json.length());
+        if (username != null) {
+            json.append("\"username\": \"")
+                .append(username)
+                .append("\", ");
+        }
+        if (password != null) {
+            json.append("\"password\": \"")
+                .append(password)
+                .append("\", ");
+        }
+        if (email != null) {
+            json.append("\"email\": \"")
+                .append(email)
+                .append("\", ");
+        }
+        if (json.charAt(json.length() - 2) == ',') {
+            json.delete(json.length() - 2, json.length());
+        }
         json.append("}");
         return json.toString();
     }
