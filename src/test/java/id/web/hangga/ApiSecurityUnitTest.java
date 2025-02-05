@@ -198,7 +198,7 @@ public class ApiSecurityUnitTest {
             .forEach(method -> {
                 given().request(method.name(), "/auth/login")
                     .then()
-                    .statusCode(404); // Method Not Allowed
+                    .statusCode(404);
             });
     }
 
