@@ -1,21 +1,18 @@
 package id.web.hangga;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.configureFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.containing;
-import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.matching;
-import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlMatching;
 import static com.github.tomakehurst.wiremock.stubbing.Scenario.STARTED;
 import static io.restassured.RestAssured.given;
-import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.notNullValue;
 
-import java.util.Arrays;
-import java.util.stream.IntStream;
-
-import org.eclipse.jetty.http.HttpMethod;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -23,213 +20,204 @@ import org.junit.jupiter.api.Test;
 import com.github.tomakehurst.wiremock.WireMockServer;
 
 import io.restassured.RestAssured;
-import io.restassured.http.ContentType;
+import io.restassured.response.Response;
 
 public class ApiSecurityUnitTest {
-
-    private static final String API_URL = "http://localhost:8080/";
 
     private static WireMockServer wireMockServer;
 
     @BeforeAll
-    public static void setUp() {
+    public static void setup() {
         wireMockServer = new WireMockServer(8080);
         wireMockServer.start();
 
-        RestAssured.baseURI = API_URL;
-        configureFor("localhost", 8080);
+        // Set the base URL for RestAssured to WireMock server
+        RestAssured.baseURI = "http://localhost:8080";
+        RestAssured.defaultParser = io.restassured.parsing.Parser.JSON;
 
-        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
-            .willReturn(aResponse().withStatus(200)
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withHeader("Content-Type", "application/json")));
-
-        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
-            .inScenario("Brute Force")
-            .whenScenarioStateIs(STARTED)
-            .willReturn(aResponse().withStatus(401)
-                .withHeader("X-Content-Type-Options", "nosniff"))
-            .willSetStateTo("BLOCKED"));
-
-        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
-            .inScenario("Brute Force")
-            .whenScenarioStateIs("BLOCKED")
-            .willReturn(aResponse().withStatus(429)
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"Too many failed attempts\" }")));
-
-        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
-            .withRequestBody(containing("' OR '1'='1"))
-            .willReturn(aResponse().withStatus(422)
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"SQL Injection attempt detected\" }")));
-
-        stubFor(post("/auth/login").withHeader("Content-Type", containing("application/json"))
-            .withRequestBody(equalToJson("{\"username\": \"validuser\", \"password\": \"correctpassword\", \"email\" : \"valid@example.com\"}"))
-            .willReturn(aResponse().withStatus(200)
-                .withHeader("Content-Type", "application/json")
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"token\": \"valid-jwt-token\" }")));
-
-        stubFor(post("/auth/signup").withHeader("Content-Type", containing("application/json"))
-            .willReturn(aResponse().withStatus(201)
-                .withHeader("Content-Type", "application/json")
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"User created successfully\" }")));
-
-        stubFor(post("/auth/signup").withRequestBody(
-                equalToJson("{\"username\": \"existinguser\", \"password\": \"password123\", \"email\": \"existing@example.com\"}"))
-            .willReturn(aResponse().withStatus(409)
-                .withHeader("Content-Type", "application/json")
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"Username already exists\" }")));
-
-        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.email", matching("^[^@]+$")))
-            .willReturn(aResponse().withStatus(400)
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"Invalid email format\" }")));
-
-        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.username", matching("^\\s*$")))
-            .willReturn(aResponse().withStatus(400)
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"Username cannot be empty\" }")));
-
-        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.password", matching("^\\s*$")))
-            .willReturn(aResponse().withStatus(400)
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"Password cannot be empty\" }")));
-
-        stubFor(post("/auth/signup").withRequestBody(matchingJsonPath("$.email", matching("^\\s*$")))
-            .willReturn(aResponse().withStatus(400)
-                .withHeader("X-Content-Type-Options", "nosniff")
-                .withBody("{ \"message\": \"Email cannot be empty\" }")));
+        // Setup WireMock stubs
+        setupStubs();
     }
 
     @AfterAll
     public static void teardown() {
+        // Stop WireMock server
         wireMockServer.stop();
     }
 
-    // 1. Authentication Bypass Attempt
-    @Test
-    public void testAuthenticationBypass() {
-        given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"admin\", \"password\": \"' OR '1'='1\" }")
-            .when()
-            .post("/auth/login")
-            .then()
-            .statusCode(422);
+    private static void setupStubs() {
+        // Stub for unauthorized access
+        stubFor(get(urlEqualTo("/private-endpoint"))
+            .willReturn(aResponse().withStatus(401)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"message\":\"Unauthorized\"}")));
+
+        // Stub for SQL injection test
+        stubFor(get(urlMatching("/posts.*"))
+            .willReturn(aResponse().withStatus(500)
+            .withHeader("Content-Type", "application/json")
+            .withBody("[]")));
+
+        // Stub for XSS test
+        stubFor(post(urlEqualTo("/posts"))
+            .withRequestBody(containing("<script>alert('XSS')</script>"))
+            .willReturn(aResponse().withStatus(201)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"body\":\"<script>alert('XSS')</script>\"}")));
+
+        // Stub for rate limiting test
+        stubFor(get(urlEqualTo("/rate-limited-endpoint"))
+            .inScenario("Rate Limiting Scenario")
+            .whenScenarioStateIs(STARTED)
+            .willReturn(aResponse()
+                .withStatus(200)
+                .withHeader("Content-Type", "application/json")
+                .withBody("[]"))
+            .willSetStateTo("Rate Limit Exceeded"));
+
+        stubFor(get(urlEqualTo("/rate-limited-endpoint"))
+            .inScenario("Rate Limiting Scenario")
+            .whenScenarioStateIs("Rate Limit Exceeded")
+            .willReturn(aResponse()
+                .withStatus(429)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":\"Too Many Requests\"}")));
+
+        // Stub for CSRF protection test
+        stubFor(post(urlEqualTo("/posts"))
+            .withHeader("X-CSRF-Token", containing("invalid-token"))
+            .willReturn(aResponse().withStatus(403)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":\"Invalid CSRF token\"}")));
+
+        // Stub for missing authentication token
+        stubFor(get(urlEqualTo("/private-endpoint"))
+            .willReturn(aResponse().withStatus(401)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"message\":\"Unauthorized\"}")));
+
+
+        // Stub for invalid data test
+        stubFor(post(urlEqualTo("/posts"))
+            .withRequestBody(containing("-"))
+            .willReturn(aResponse()
+                .withStatus(403)
+                .withHeader("Content-Type", "application/json")
+                .withBody("{\"error\":\"Invalid input\"}")));
+
+        // Stub for sensitive data exposure test
+        stubFor(get(urlEqualTo("/users/1"))
+            .willReturn(aResponse().withStatus(200)
+            .withHeader("Content-Type", "application/json")
+            .withBody("{\"email\":\"user@example.com\"}")));
+
+        // Stub for security headers test
+        stubFor(get(urlEqualTo("/posts")).willReturn(aResponse().withStatus(200)
+            .withHeader("Content-Security-Policy", "default-src 'self'")
+            .withHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+            .withBody("[]")));
+
+        // Stub for HTTPS only test (not applicable in WireMock setup, so omitted)
     }
 
-    // 2. Brute Force Attack Protection
     @Test
-    public void testBruteForceProtection() {
-        IntStream.rangeClosed(1, 3)
-            .forEach(i -> {
-                given().contentType(ContentType.JSON)
-                    .body("{ \"username\": \"user\", \"password\": \"wrongpass\" }")
-                    .when()
-                    .post("/auth/login")
-                    .then()
-                    .statusCode(i < 2 ? 401 : 429); // Threshold 3 attempts
-            });
-    }
-
-    // 3. SQL Injection Attempt
-    @Test
-    public void testSQLInjectionProtection() {
-        given().contentType(ContentType.JSON)
-            .body("{ \"email\": \"'; DROP TABLE users;--\" }")
-            .when()
-            .post("/auth/login")
-            .then()
-            .statusCode(429);
-    }
-
-    // 4. XSS Attack Attempt
-    @Test
-    public void testXSSProtection() {
-        given().contentType(ContentType.JSON)
-            .body("{ \"comment\": \"<script>alert('XSS')</script>\" }")
-            .when()
-            .post("/auth/signup")
-            .then()
-            .statusCode(201);
-    }
-
-    // 5. Insecure Direct Object Reference
-    @Test
-    public void testInsecureDirectObjectReference() {
-        given().header("Authorization", "Bearer valid-token")
-            .when()
-            .get("/api/users/12345/orders")
-            .then()
-            .statusCode(404);
-    }
-
-    // 6. Mass Assignment Vulnerability
-    @Test
-    public void testMassAssignmentProtection() {
-        given().contentType(ContentType.JSON)
-            .body("{ \"username\": \"user\", \"role\": \"admin\" }")
-            .when()
-            .post("/auth/signup")
-            .then()
-            .statusCode(201);
-    }
-
-    // 8. CORS Misconfiguration
-    @Test
-    public void testCORSValidation() {
-        given()
-            .header("Origin", "https://malicious-site.com")
-            .header("Access-Control-Request-Method", "POST")
-            .when()
-            .options("/auth/login")
-            .then()
-            .statusCode(404) // Forbidden
-            .header("Access-Control-Allow-Origin", nullValue());
-    }
-
-    // 9. HTTP Method Fuzzing
-    @Test
-    public void testUnsupportedHttpMethods() {
-        Arrays.asList(HttpMethod.PUT, HttpMethod.DELETE, HttpMethod.PATCH)
-            .forEach(method -> {
-                given().request(method.name(), "/auth/login")
-                    .then()
-                    .statusCode(404);
-            });
-    }
-
-    // 10. Input Validation Testing
-    @Test
-    public void testInputValidation() {
-        given().contentType(ContentType.JSON)
-            .body("{ \"email\": \"invalid-email\", \"password\": \" \" }")
-            .when()
-            .post("/auth/signup")
-            .then()
-            .statusCode(400);
-    }
-
-    // 11. Content Type Validation
-    @Test
-    public void testInvalidContentType() {
-        given().contentType(ContentType.TEXT)
-            .body("plain text")
-            .when()
-            .post("/auth/login")
-            .then()
-            .statusCode(404);
-    }
-
-    // 12. Error Handling Information Leak
-    @Test
-    public void testErrorHandling() {
+    public void testUnauthorizedAccess() {
         given().when()
-            .get("/api/nonexistent-endpoint")
+            .get("/private-endpoint")
             .then()
-            .statusCode(404);
+            .statusCode(401)
+            .body("message", equalTo("Unauthorized"));
+    }
+
+    @Test
+    public void testSQLInjection() {
+        String maliciousInput = "' OR '1'='1";
+
+        given().param("q", maliciousInput)
+            .when()
+            .get("/posts")
+            .then()
+            .statusCode(500);
+    }
+
+    @Test
+    public void testXSS() {
+        String xssPayload = "<script>alert('XSS')</script>";
+
+        given()
+            .body("{\"body\":\"" + xssPayload + "\"}")
+            .when()
+            .post("/posts")
+            .then()
+            .statusCode(201)
+            .body("body", equalTo(xssPayload));
+    }
+
+    @Test
+    public void testRateLimiting() {
+        for (int i = 0; i < 3; i++) {
+            Response response = given()
+                .when()
+                .get("/rate-limited-endpoint")
+                .then()
+                .extract()
+                .response();
+
+            if (i > 0) {
+                response.then().statusCode(429).body("error", equalTo("Too Many Requests"));
+            } else {
+                response.then().statusCode(200);
+            }
+        }
+    }
+
+    @Test
+    public void testCSRFProtection() {
+        given().header("X-CSRF-Token", "invalid-token")
+            .when()
+            .post("/posts")
+            .then()
+            .statusCode(403)
+            .body("error", equalTo("Invalid CSRF token"));
+    }
+
+    @Test
+    public void testMissingAuthenticationToken() {
+        given().when()
+            .get("/private-endpoint")
+            .then()
+            .statusCode(401)
+            .body("message", equalTo("Unauthorized"));
+    }
+
+    @Test
+    public void testInvalidData() {
+
+        given()
+            .body("-")
+            .when()
+            .post("/posts")
+            .then()
+            .statusCode(403)
+            .body("error", equalTo("Invalid input"));
+    }
+
+    @Test
+    public void testSensitiveDataExposure() {
+        given().when()
+            .get("/users/1")
+            .then()
+            .statusCode(200)
+            .body("email", containsString("@example.com"));
+    }
+
+    @Test
+    public void testSecurityHeaders() {
+        given().when()
+            .get("/posts")
+            .then()
+            .statusCode(200)
+            .header("Content-Security-Policy", notNullValue())
+            .header("Strict-Transport-Security", notNullValue());
     }
 }
