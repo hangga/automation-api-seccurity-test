@@ -54,7 +54,7 @@ public class ApiSecurityUnitTest {
 
         // Stub for SQL injection test
         stubFor(get(urlMatching("/posts.*"))
-            .willReturn(aResponse().withStatus(500)
+            .willReturn(aResponse().withStatus(400)
             .withHeader("Content-Type", "application/json")
             .withBody("[]")));
 
@@ -115,6 +115,9 @@ public class ApiSecurityUnitTest {
         stubFor(get(urlEqualTo("/posts")).willReturn(aResponse().withStatus(200)
             .withHeader("Content-Security-Policy", "default-src 'self'")
             .withHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+            .withHeader("X-Frame-Options", "DENY") // Cegah Clickjacking
+            .withHeader("X-Content-Type-Options", "nosniff") // Hindari MIME-type sniffing
+            .withHeader("Referrer-Policy", "no-referrer") // Batasi referrer leakage
             .withBody("[]")));
 
         // Stub for HTTPS only test (not applicable in WireMock setup, so omitted)
@@ -137,7 +140,7 @@ public class ApiSecurityUnitTest {
             .when()
             .get("/posts")
             .then()
-            .statusCode(500);
+            .statusCode(400);
     }
 
     @Test
@@ -218,6 +221,9 @@ public class ApiSecurityUnitTest {
             .then()
             .statusCode(200)
             .header("Content-Security-Policy", notNullValue())
-            .header("Strict-Transport-Security", notNullValue());
+            .header("Strict-Transport-Security", notNullValue())
+            .header("X-Frame-Options", equalTo("DENY")) // prevent Clickjacking
+            .header("X-Content-Type-Options", equalTo("nosniff")) // avoid MIME-type sniffing
+            .header("Referrer-Policy", equalTo("no-referrer")); // limiting referrer leakage
     }
 }
